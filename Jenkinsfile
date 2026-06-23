@@ -50,17 +50,17 @@ pipeline {
     }
 
     stage('Load Vars') {
-      // SSM Parameter Store → TF_VAR_* 환경변수 주입
-      // terraform plan 실행 전에 필수 변수값을 주입해야 함
-      // returnStdout: true 사용 시 stdout은 콘솔 미출력 (값 노출 방지)
       steps {
         script {
-          ['container_image', 'db_name', 'db_username', 'db_password', 's3_bucket_name'].each { key ->
-            env["TF_VAR_${key}"] = sh(
-              returnStdout: true,
-              script: "aws ssm get-parameter --name '/farmily/${ENV}/${key}' --with-decryption --query Parameter.Value --output text"
-            ).trim()
+          def ssm = { String key ->
+            sh(returnStdout: true,
+               script: "aws ssm get-parameter --name '/farmily/${ENV}/${key}' --with-decryption --query Parameter.Value --output text").trim()
           }
+          env.TF_VAR_container_image = ssm('container_image')
+          env.TF_VAR_db_name         = ssm('db_name')
+          env.TF_VAR_db_username     = ssm('db_username')
+          env.TF_VAR_db_password     = ssm('db_password')
+          env.TF_VAR_s3_bucket_name  = ssm('s3_bucket_name')
         }
       }
     }
