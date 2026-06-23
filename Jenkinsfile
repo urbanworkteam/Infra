@@ -69,7 +69,7 @@ pipeline {
       post {
         always {
           dir(TF_DIR) {
-            junit 'checkov.xml'
+            junit allowEmptyResults: true, testResults: 'checkov.xml'
           }
         }
       }
@@ -168,20 +168,26 @@ pipeline {
     success {
       script {
         if (env.TF_HAS_CHANGES == 'true' && !env.CHANGE_ID) {
-          slackSend(
-            channel: '#farmily-infra',
-            color: 'good',
-            message: "[Infra/${ENV}] terraform apply 완료\n${env.JOB_NAME} #${env.BUILD_NUMBER}\n<${env.BUILD_URL}|빌드 로그>"
-          )
+          try {
+            slackSend(
+              channel: '#farmily-infra',
+              color: 'good',
+              message: "[Infra/${ENV}] terraform apply 완료\n${env.JOB_NAME} #${env.BUILD_NUMBER}\n<${env.BUILD_URL}|빌드 로그>"
+            )
+          } catch (e) { echo "Slack 알림 실패(토큰 미설정): ${e.message}" }
         }
       }
     }
     failure {
-      slackSend(
-        channel: '#farmily-infra',
-        color: 'danger',
-        message: "[Infra/${ENV}] 파이프라인 실패 (가드 차단 가능)\n${env.JOB_NAME} #${env.BUILD_NUMBER}\n<${env.BUILD_URL}|로그 확인>"
-      )
+      script {
+        try {
+          slackSend(
+            channel: '#farmily-infra',
+            color: 'danger',
+            message: "[Infra/${ENV}] 파이프라인 실패 (가드 차단 가능)\n${env.JOB_NAME} #${env.BUILD_NUMBER}\n<${env.BUILD_URL}|로그 확인>"
+          )
+        } catch (e) { echo "Slack 알림 실패(토큰 미설정): ${e.message}" }
+      }
     }
     always {
       cleanWs()

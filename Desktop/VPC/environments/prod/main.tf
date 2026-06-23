@@ -197,11 +197,11 @@ module "rds" {
 module "elasticache" {
   source = "../../modules/elasticache"
 
-  env                = "prod"
-  private_subnet_ids = [module.vpc.private_subnet_a_id, module.vpc.private_subnet_c_id]
-  security_group_ids = [module.sg.redis_sg_id]
-  node_type          = "cache.t3.small"
-  num_cache_clusters = 2
+  env                        = "prod"
+  private_subnet_ids         = [module.vpc.private_subnet_a_id, module.vpc.private_subnet_c_id]
+  security_group_ids         = [module.sg.redis_sg_id]
+  node_type                  = "cache.t3.small"
+  num_cache_clusters         = 2
   transit_encryption_enabled = true
   transit_encryption_mode    = "required"
 }
@@ -318,8 +318,8 @@ module "route53" {
   zone_id = data.aws_route53_zone.main.zone_id
 
   # 앱/API -> ALB 직접 (api.farmily.info는 Failover로 분리)
-  alb_dns_name = module.ecs.alb_dns_name
-  alb_zone_id  = module.ecs.alb_zone_id
+  alb_dns_name     = module.ecs.alb_dns_name
+  alb_zone_id      = module.ecs.alb_zone_id
   alb_record_names = ["ecs.farmily.info"]
 
   # 정적 웹 -> CloudFront
@@ -367,7 +367,7 @@ resource "aws_route53_record" "api_secondary" {
 
   alias {
     name                   = "dr-alb-489281855.ap-northeast-1.elb.amazonaws.com"
-    zone_id                = "Z14GRHDCWA56QT"  # ap-northeast-1 ALB hosted zone ID
+    zone_id                = "Z14GRHDCWA56QT" # ap-northeast-1 ALB hosted zone ID
     evaluate_target_health = true
   }
 }
