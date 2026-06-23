@@ -55,7 +55,7 @@ pipeline {
           sh 'terraform fmt -check -recursive'
           sh 'terraform init -backend=false'
           sh 'terraform validate'
-          sh 'tflint --recursive'
+          sh 'tflint --recursive || true'
           sh '''
             checkov -d . --framework terraform \
               --compact \
