@@ -27,3 +27,4 @@ ai: {enabled: false}
 hpa: {enabled: false}
 keda: {enabled: false}
 targetGroupArn: arn:aws:elasticloadbalancing:ap-northeast-2:851957594139:targetgroup/dev-eks-tg/f94ef7701a2bda39
+# [4-5] gitops 검증 CI 트리거 테스트 (2026-06-24) — 렌더 무영향(주석). 검증 후 PR close 예정.
