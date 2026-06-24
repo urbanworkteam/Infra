@@ -31,7 +31,7 @@ def ghStatus(String state, String description) {
           -d '{"state":"${state}","context":"${CONTEXT}","target_url":"${env.BUILD_URL}","description":"${description}"}'
       """).trim()
       echo "ghStatus: HTTP ${code}"
-      if (code != '201') { echo('ghStatus resp: ' + readFile('/tmp/gh_resp.txt')) }
+      if (code != '201') { sh 'echo "ghStatus resp: $(cat /tmp/gh_resp.txt 2>/dev/null)"' }
     }
   } catch (e) {
     echo "ghStatus 실패(무시): ${e.message}"
