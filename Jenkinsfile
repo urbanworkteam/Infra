@@ -36,31 +36,28 @@ pipeline {
     stage('Check Changes') {
       steps {
         script {
-          // PR 빌드: CHANGE_TARGET(머지 대상 브랜치)을 "명시적 로컬 ref"로 fetch해
-          // 이 PR이 순수하게 더한 변경만 잡는다.
-          //   - FETCH_HEAD는 checkout scm이 덮어써 신뢰 불가 → +origin/<b>:refs/remotes/origin/<b>로 명시 fetch(+=강제갱신).
-          //   - 2-dot diff(A B)는 공통조상 불필요 → shallow depth에서도 안전(3-dot A...B만 merge-base 필요).
-          // branch 빌드(직접 push)는 CHANGE_TARGET이 없어 직전 커밋 기준 fallback.
+          // 변경 감지는 fetch 없이 "로컬 ref"만 사용한다.
+          //   - tf-agent raw sh에는 GitHub 자격증명이 없어 수동 git fetch가 실패함(실측: FETCH_HEAD·명시적 ref 둘 다 빈 결과).
+          //   - Jenkins PR 머지빌드: HEAD = merge(소스, 타깃) → HEAD^2 = 머지된 타깃(main, 로컬). diff(HEAD^2, HEAD) = 이 PR의 순수 변경.
+          //   - PR head빌드/branch 빌드: 머지커밋 아님 → 직전 커밋(HEAD~1) 기준.
           // sh는 set +e·2>/dev/null·true로 항상 0 종료 → returnStdout 예외(빌드 ERROR) 방지.
           def isPR = (env.CHANGE_TARGET != null && env.CHANGE_TARGET != '')
           def changed = sh(
             returnStdout: true,
-            script: isPR
-              ? """
-                set +e
-                git fetch --no-tags --depth=100 origin +${env.CHANGE_TARGET}:refs/remotes/origin/${env.CHANGE_TARGET} >/dev/null 2>&1
-                git diff --name-only refs/remotes/origin/${env.CHANGE_TARGET} HEAD 2>/dev/null
-                true
-              """
-              : """
-                set +e
+            script: """
+              set +e
+              if git rev-parse --verify HEAD^2 >/dev/null 2>&1; then
+                # PR 머지빌드: HEAD^2 = 머지된 타깃(main) → 이 PR의 순수 변경
+                git diff --name-only HEAD^2 HEAD 2>/dev/null
+              else
                 git diff --name-only HEAD~1 HEAD 2>/dev/null || git show --name-only --format='' HEAD 2>/dev/null
-                true
-              """
+              fi
+              true
+            """
           ).trim()
 
-          // 진단: 다음 빌드 로그에서 base·변경목록을 바로 확인(오작동 시 원인 추적용)
-          echo "Check Changes — base=${isPR ? "origin/${env.CHANGE_TARGET}" : 'HEAD~1'} / 변경 파일:\n${changed ?: '(없음/판정불가)'}"
+          // 진단: 다음 빌드 로그에서 변경목록을 바로 확인(오작동 시 원인 추적용)
+          echo "Check Changes — isPR=${isPR} / 변경 파일:\n${changed ?: '(없음/판정불가)'}"
 
           // terraform 코드는 전부 Desktop/VPC/ 아래(environments·modules)에 있다.
           // 기존 'environments/'·'modules/'(루트) 매칭은 실제 경로와 안 맞아 무력 → Desktop/VPC/로 교정.
