@@ -81,11 +81,9 @@ pipeline {
     }
 
     stage('Assume Role') {
-      when { environment name: 'TF_SKIP', value: 'false' }
       steps {
         script {
-          // EC2 인스턴스 프로파일(IMDSv2) → apply 역할 가정 (키리스)
-          // readJSON: Pipeline Utility Steps 플러그인 필요
+          if (env.TF_SKIP == 'true') { echo "TF_SKIP — Assume Role 건너뜀"; return }
           def out = sh(returnStdout: true, script: """
             aws sts assume-role \
               --role-arn ${ROLE_ARN} \
@@ -102,9 +100,9 @@ pipeline {
     }
 
     stage('Load Vars') {
-      when { environment name: 'TF_SKIP', value: 'false' }
       steps {
         script {
+          if (env.TF_SKIP == 'true') { echo "TF_SKIP — Load Vars 건너뜀"; return }
           def ssm = { String key ->
             sh(returnStdout: true,
                script: "aws ssm get-parameter --name '/farmily/${ENV}/${key}' --with-decryption --query Parameter.Value --output text").trim()
@@ -119,21 +117,23 @@ pipeline {
     }
 
     stage('Validate') {
-      when { environment name: 'TF_SKIP', value: 'false' }
       steps {
-        dir(TF_DIR) {
-          sh 'terraform fmt -check -recursive'
-          sh 'terraform init -backend=false'
-          sh 'terraform validate'
-          sh 'tflint --recursive || true'
-          sh '''
-            checkov -d . --framework terraform \
-              --compact \
-              --output cli \
-              --output junitxml \
-              --output-file-path console,checkov.xml \
-              --soft-fail
-          '''
+        script {
+          if (env.TF_SKIP == 'true') { echo "TF_SKIP — Validate 건너뜀"; return }
+          dir(TF_DIR) {
+            sh 'terraform fmt -check -recursive'
+            sh 'terraform init -backend=false'
+            sh 'terraform validate'
+            sh 'tflint --recursive || true'
+            sh '''
+              checkov -d . --framework terraform \
+                --compact \
+                --output cli \
+                --output junitxml \
+                --output-file-path console,checkov.xml \
+                --soft-fail
+            '''
+          }
         }
       }
       post {
@@ -146,26 +146,20 @@ pipeline {
     }
 
     stage('Plan') {
-      when { environment name: 'TF_SKIP', value: 'false' }
       steps {
-        dir(TF_DIR) {
-          sh 'terraform init -input=false'
-          script {
+        script {
+          if (env.TF_SKIP == 'true') { echo "TF_SKIP — Plan 건너뜀"; return }
+          dir(TF_DIR) {
+            sh 'terraform init -input=false'
             def rc = sh(returnStatus: true, script: '''
               terraform plan -input=false -lock-timeout=120s \
                 -out=tfplan -detailed-exitcode
             ''')
             if (rc == 1) { error('terraform plan 실패') }
             env.TF_HAS_CHANGES = (rc == 2) ? 'true' : 'false'
-          }
-          stash name: 'tfplan', includes: 'tfplan'
-          script {
-            // PR 빌드일 때만 plan 결과를 PR 코멘트로 기록 (CHANGE_ID = PR 번호)
+            stash name: 'tfplan', includes: 'tfplan'
             if (env.CHANGE_ID) {
               sh 'terraform show -no-color tfplan > plan.txt'
-              // farmily-gitops-bot GitHub App credential — 빌드마다 단명 installation 토큰 발급.
-              // 개인 PAT(github-pat-token) 제거 → terraform plan 코멘트가 사람이 아닌 봇 이름으로 게시됨.
-              // GitHub App credential은 usernamePassword 형: username=App ID, password=발급된 토큰.
               withCredentials([usernamePassword(credentialsId: 'github-app-gitops-bot',
                                                 usernameVariable: 'GH_APP_ID',
                                                 passwordVariable: 'GH_TOKEN')]) {
