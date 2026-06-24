@@ -110,6 +110,8 @@ pipeline {
           def tfChanged
           if (isPR && changed == '') {
             // PR인데 변경목록을 못 구함(fetch 실패 등) → 안전하게 Terraform 실행(skip 안 함 = false-skip 방지)
+            // ⚠️ 빈 커밋(git commit --allow-empty)도 changed=''라 여기로 빠져 terraform 전체(checkov 포함) 실행됨.
+            //    검증 트리거는 빈 커밋이 아니라 "실제 파일 변경" 커밋으로 해야 TF_SKIP이 정상 동작.
             tfChanged = true
             echo "PR 변경목록 판정불가 — 안전상 Terraform 실행"
           } else {
