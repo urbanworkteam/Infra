@@ -47,8 +47,10 @@ pipeline {
             script: """
               set +e
               if git rev-parse --verify HEAD^2 >/dev/null 2>&1; then
-                # PR 머지빌드: HEAD^2 = 머지된 타깃(main) → 이 PR의 순수 변경
-                git diff --name-only HEAD^2 HEAD 2>/dev/null
+                # PR 머지빌드: parent 순서 불확실(main이 ^1인지 ^2인지 Jenkins 구현 따라 다름).
+                # → 양쪽 diff 합집합. 한쪽=PR 순수변경, 다른쪽=main advance.
+                #   합쳐도 Desktop/VPC 미포함이면 안전 skip이고, false-skip(놓침)은 발생 안 함.
+                { git diff --name-only HEAD^1 HEAD; git diff --name-only HEAD^2 HEAD; } 2>/dev/null | sort -u
               else
                 git diff --name-only HEAD~1 HEAD 2>/dev/null || git show --name-only --format='' HEAD 2>/dev/null
               fi
