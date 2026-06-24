@@ -15,7 +15,7 @@ def ghStatus(String state, String description) {
         // PR 빌드: 머지커밋(GIT_COMMIT) 아닌 PR head SHA에 찍어야 PR 화면에 표시됨.
         // pull/<번호>/head = GitHub가 노출하는 PR head ref(머지/헤드 모드·parent 순서 무관).
         sha = sh(returnStdout: true, script:
-          'git ls-remote "https://x-access-token:${GH_TOKEN}@github.com/urbanworkteam/Infra" "pull/' + env.CHANGE_ID + '/head" | cut -f1'
+          'git ls-remote "https://x-access-token:${GH_TOKEN}@github.com/urbanworkteam/Infra" "refs/pull/' + env.CHANGE_ID + '/head" | cut -f1'
         ).trim()
       } else {
         sha = env.GIT_COMMIT   // branch 빌드: 체크아웃된 커밋이 곧 대상
@@ -25,6 +25,7 @@ def ghStatus(String state, String description) {
         curl -sf -X POST \
           -H "Authorization: Bearer \${GH_TOKEN}" \
           -H "Accept: application/vnd.github+json" \
+          -H "Content-Type: application/json" \
           "https://api.github.com/repos/urbanworkteam/Infra/statuses/${sha}" \
           -d '{"state":"${state}","context":"${CONTEXT}","target_url":"${env.BUILD_URL}","description":"${description}"}'
       """
