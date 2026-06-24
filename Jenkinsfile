@@ -1,3 +1,39 @@
+// ── GitHub 커스텀 상태 context 게시 ─────────────────────────────────────────
+// 문제: terraform·gitops 두 Multibranch Job이 같은 'continuous-integration/jenkins/pr-head'
+//   context로 보고 → GitHub는 commit당 context별 최신 1개만 보관 → 늦게 끝난 Job이 덮어써 비결정적.
+// 해결: 이 Job 전용 context(CONTEXT)로 별도 게시 → PR 체크가 terraform/gitops로 분리됨.
+//   (github-branch-source 옛 버전이라 'Custom GitHub Notification Context' trait 부재 → 코드로 직접.)
+// 도구: curl + git만 사용(gitops-agent엔 jq·gh 없음 — 두 파일 동일 방식). 게시 실패는 빌드 안 깸(best-effort).
+def ghStatus(String state, String description) {
+  def CONTEXT = 'continuous-integration/jenkins/terraform'
+  try {
+    withCredentials([usernamePassword(credentialsId: 'github-app-gitops-bot',
+                                      usernameVariable: 'GH_APP_ID',
+                                      passwordVariable: 'GH_TOKEN')]) {
+      def sha
+      if (env.CHANGE_ID) {
+        // PR 빌드: 머지커밋(GIT_COMMIT) 아닌 PR head SHA에 찍어야 PR 화면에 표시됨.
+        // pull/<번호>/head = GitHub가 노출하는 PR head ref(머지/헤드 모드·parent 순서 무관).
+        sha = sh(returnStdout: true, script:
+          'git ls-remote "https://x-access-token:${GH_TOKEN}@github.com/urbanworkteam/Infra" "pull/' + env.CHANGE_ID + '/head" | cut -f1'
+        ).trim()
+      } else {
+        sha = env.GIT_COMMIT   // branch 빌드: 체크아웃된 커밋이 곧 대상
+      }
+      if (!sha) { echo 'ghStatus: SHA 획득 실패 — 게시 생략'; return }
+      sh """
+        curl -sf -X POST \
+          -H "Authorization: Bearer \${GH_TOKEN}" \
+          -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/urbanworkteam/Infra/statuses/${sha}" \
+          -d '{"state":"${state}","context":"${CONTEXT}","target_url":"${env.BUILD_URL}","description":"${description}"}'
+      """
+    }
+  } catch (e) {
+    echo "ghStatus 실패(무시): ${e.message}"
+  }
+}
+
 pipeline {
   agent {
     docker {
@@ -32,6 +68,8 @@ pipeline {
     stage('Checkout') {
       steps {
         checkout scm
+        // 커스텀 context 'pending' — terraform Job 전용 칸(pr-head 충돌 회피). GIT_COMMIT은 checkout 후 set됨.
+        script { ghStatus('pending', 'terraform pipeline running') }
       }
     }
 
@@ -242,6 +280,7 @@ pipeline {
   post {
     success {
       script {
+        ghStatus('success', env.TF_SKIP == 'true' ? 'no terraform changes (skipped)' : 'terraform ok')
         if (env.TF_HAS_CHANGES == 'true' && !env.CHANGE_ID) {
           withCredentials([string(credentialsId: 'slack-infra-webhook', variable: 'SLACK_URL')]) {
             sh """curl -s -X POST "\$SLACK_URL" \
@@ -253,6 +292,7 @@ pipeline {
     }
     failure {
       script {
+        ghStatus('failure', 'terraform pipeline failed')
         withCredentials([string(credentialsId: 'slack-infra-webhook', variable: 'SLACK_URL')]) {
           sh """curl -s -X POST "\$SLACK_URL" \
             -H 'Content-type: application/json' \

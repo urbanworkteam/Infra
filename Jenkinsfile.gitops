@@ -1,5 +1,37 @@
 // gitops 검증 파이프라인 — gitops/ PR 시 helm 렌더 → 스키마 → 정책 검증. 배포는 안 함(ArgoCD 담당), AWS 권한 0.
 // Jenkins Job(Multibranch) Script Path = Jenkinsfile.gitops, 트리거 = gitops/ 경로 PR. (terraform 파이프라인과 별도 Job)
+
+// ── GitHub 커스텀 상태 context 게시 ─────────────────────────────────────────
+// terraform Jenkinsfile과 동일 헬퍼(CONTEXT만 .../gitops). 두 Job이 'pr-head' 한 칸을 공유해 덮어쓰던
+// 문제를 Job 전용 context로 분리. gitops-agent엔 jq·gh 없음 → curl + git만 사용. 게시 실패는 빌드 안 깸.
+def ghStatus(String state, String description) {
+  def CONTEXT = 'continuous-integration/jenkins/gitops'
+  try {
+    withCredentials([usernamePassword(credentialsId: 'github-app-gitops-bot',
+                                      usernameVariable: 'GH_APP_ID',
+                                      passwordVariable: 'GH_TOKEN')]) {
+      def sha
+      if (env.CHANGE_ID) {
+        sha = sh(returnStdout: true, script:
+          'git ls-remote "https://x-access-token:${GH_TOKEN}@github.com/urbanworkteam/Infra" "pull/' + env.CHANGE_ID + '/head" | cut -f1'
+        ).trim()
+      } else {
+        sha = env.GIT_COMMIT
+      }
+      if (!sha) { echo 'ghStatus: SHA 획득 실패 — 게시 생략'; return }
+      sh """
+        curl -sf -X POST \
+          -H "Authorization: Bearer \${GH_TOKEN}" \
+          -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/urbanworkteam/Infra/statuses/${sha}" \
+          -d '{"state":"${state}","context":"${CONTEXT}","target_url":"${env.BUILD_URL}","description":"${description}"}'
+      """
+    }
+  } catch (e) {
+    echo "ghStatus 실패(무시): ${e.message}"
+  }
+}
+
 pipeline {
   agent {
     docker {
@@ -21,6 +53,8 @@ pipeline {
     // ① helm 렌더링 — values-dev/prod 각각 최종 매니페스트 산출(템플릿 에러 1차 차단)
     stage('Helm Template') {
       steps {
+        // 커스텀 context 'pending' — gitops Job 전용 칸(pr-head 충돌 회피)
+        script { ghStatus('pending', 'gitops validation running') }
         sh '''
           helm template farmily-app ${CHART} -f ${CHART}/values-dev.yaml  > /tmp/dev.yaml
           helm template farmily-app ${CHART} -f ${CHART}/values-prod.yaml > /tmp/prod.yaml
@@ -51,6 +85,7 @@ pipeline {
   // Slack 알림 — terraform 파이프라인과 동일 방식(slack-infra-webhook + curl, #farmily-인프라)
   post {
     success {
+      script { ghStatus('success', 'gitops validation ok') }
       withCredentials([string(credentialsId: 'slack-infra-webhook', variable: 'SLACK_URL')]) {
         sh '''
           curl -sf -X POST -H 'Content-type: application/json' \
@@ -59,6 +94,7 @@ pipeline {
       }
     }
     failure {
+      script { ghStatus('failure', 'gitops validation failed') }
       withCredentials([string(credentialsId: 'slack-infra-webhook', variable: 'SLACK_URL')]) {
         sh '''
           curl -sf -X POST -H 'Content-type: application/json' \
