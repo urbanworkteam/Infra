@@ -36,9 +36,10 @@ pipeline {
     stage('Check Changes') {
       steps {
         script {
-          // PR 빌드는 merge commit + shallow clone이라 HEAD~1 기준 diff가 틀어짐.
-          // → 머지 대상(CHANGE_TARGET)을 fetch해 FETCH_HEAD 기준으로 "이 PR이 더한 변경"만 잡는다.
-          //   (origin/<branch> ref 존재에 의존하지 않으려고 FETCH_HEAD 사용)
+          // PR 빌드: CHANGE_TARGET(머지 대상 브랜치)을 "명시적 로컬 ref"로 fetch해
+          // 이 PR이 순수하게 더한 변경만 잡는다.
+          //   - FETCH_HEAD는 checkout scm이 덮어써 신뢰 불가 → +origin/<b>:refs/remotes/origin/<b>로 명시 fetch(+=강제갱신).
+          //   - 2-dot diff(A B)는 공통조상 불필요 → shallow depth에서도 안전(3-dot A...B만 merge-base 필요).
           // branch 빌드(직접 push)는 CHANGE_TARGET이 없어 직전 커밋 기준 fallback.
           // sh는 set +e·2>/dev/null·true로 항상 0 종료 → returnStdout 예외(빌드 ERROR) 방지.
           def isPR = (env.CHANGE_TARGET != null && env.CHANGE_TARGET != '')
@@ -47,8 +48,8 @@ pipeline {
             script: isPR
               ? """
                 set +e
-                git fetch --no-tags --depth=100 origin ${env.CHANGE_TARGET} >/dev/null 2>&1
-                git diff --name-only FETCH_HEAD HEAD 2>/dev/null
+                git fetch --no-tags --depth=100 origin +${env.CHANGE_TARGET}:refs/remotes/origin/${env.CHANGE_TARGET} >/dev/null 2>&1
+                git diff --name-only refs/remotes/origin/${env.CHANGE_TARGET} HEAD 2>/dev/null
                 true
               """
               : """
@@ -59,7 +60,7 @@ pipeline {
           ).trim()
 
           // 진단: 다음 빌드 로그에서 base·변경목록을 바로 확인(오작동 시 원인 추적용)
-          echo "Check Changes — base=${isPR ? "FETCH_HEAD(${env.CHANGE_TARGET})" : 'HEAD~1'} / 변경 파일:\n${changed ?: '(없음/판정불가)'}"
+          echo "Check Changes — base=${isPR ? "origin/${env.CHANGE_TARGET}" : 'HEAD~1'} / 변경 파일:\n${changed ?: '(없음/판정불가)'}"
 
           // terraform 코드는 전부 Desktop/VPC/ 아래(environments·modules)에 있다.
           // 기존 'environments/'·'modules/'(루트) 매칭은 실제 경로와 안 맞아 무력 → Desktop/VPC/로 교정.
