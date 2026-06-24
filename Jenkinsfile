@@ -36,18 +36,32 @@ pipeline {
     stage('Check Changes') {
       steps {
         script {
+          // PR 빌드는 merge commit + shallow clone이라 HEAD~1 기준 diff가 틀어짐.
+          // → 머지 대상(CHANGE_TARGET) 기준으로 비교해 "이 PR이 순수하게 더한 변경"만 잡는다.
+          // branch 빌드(직접 push)는 CHANGE_TARGET이 없어 직전 커밋 기준 fallback.
+          def base = env.CHANGE_TARGET ? "origin/${env.CHANGE_TARGET}" : ''
+          if (base) {
+            sh "git fetch --no-tags --depth=100 origin ${env.CHANGE_TARGET} >/dev/null 2>&1 || true"
+          }
           def changed = sh(
             returnStdout: true,
-            script: "git diff --name-only HEAD~1 HEAD 2>/dev/null || git show --name-only --format='' HEAD"
+            script: base
+              ? "git diff --name-only ${base} HEAD"
+              : "git diff --name-only HEAD~1 HEAD 2>/dev/null || git show --name-only --format='' HEAD"
           ).trim()
 
-          def tfChanged = changed.split('\n').any { f ->
-            f.startsWith('environments/') || f.startsWith('modules/')
-          }
+          // 진단: 다음 빌드 로그에서 base·변경목록을 바로 확인(오작동 시 원인 추적용)
+          echo "Check Changes — base=${base ?: 'HEAD~1'} / 변경 파일:\n${changed}"
+
+          // terraform 코드는 전부 Desktop/VPC/ 아래(environments·modules)에 있다.
+          // 기존 'environments/'·'modules/'(루트) 매칭은 실제 경로와 안 맞아 무력 → Desktop/VPC/로 교정.
+          def tfChanged = changed.split('\n').any { f -> f.startsWith('Desktop/VPC/') }
 
           if (!tfChanged) {
             env.TF_SKIP = 'true'
-            echo "Terraform 파일 변경 없음 (gitops/ 전용) — Terraform 단계 전체 건너뜀"
+            echo "Terraform(Desktop/VPC/) 변경 없음 (gitops/·docker/·policy/ 등) — Terraform 단계 전체 건너뜀"
+          } else {
+            echo "Terraform 변경 감지 — plan/apply 진행"
           }
         }
       }
