@@ -20,15 +20,18 @@ def ghStatus(String state, String description) {
       } else {
         sha = env.GIT_COMMIT   // branch 빌드: 체크아웃된 커밋이 곧 대상
       }
+      echo "ghStatus: context=${CONTEXT} change=${env.CHANGE_ID ?: '-'} sha=${sha ?: '(빈값)'}"
       if (!sha) { echo 'ghStatus: SHA 획득 실패 — 게시 생략'; return }
-      sh """
-        curl -sf -X POST \
+      def code = sh(returnStdout: true, script: """
+        curl -s -o /tmp/gh_resp.txt -w '%{http_code}' -X POST \
           -H "Authorization: Bearer \${GH_TOKEN}" \
           -H "Accept: application/vnd.github+json" \
           -H "Content-Type: application/json" \
           "https://api.github.com/repos/urbanworkteam/Infra/statuses/${sha}" \
           -d '{"state":"${state}","context":"${CONTEXT}","target_url":"${env.BUILD_URL}","description":"${description}"}'
-      """
+      """).trim()
+      echo "ghStatus: HTTP ${code}"
+      if (code != '201') { echo('ghStatus resp: ' + readFile('/tmp/gh_resp.txt')) }
     }
   } catch (e) {
     echo "ghStatus 실패(무시): ${e.message}"
