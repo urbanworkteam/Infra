@@ -1,0 +1,28 @@
+# Argo Rollouts 컨트롤러 — prod 카나리 배포 엔진.
+# CRD(Rollout/AnalysisTemplate/AnalysisRun 등) + 컨트롤러를 argo-rollouts 네임스페이스에 설치.
+# 이 컨트롤러가 있어야 charts/farmily-app 의 kind: Rollout 이 동작한다(미설치 시 Rollout 무시됨).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argo-rollouts
+  namespace: argocd
+  annotations:
+    # wave -1: farmily-app-prod(기본 wave 0)이 Rollout 을 적용하기 전에 CRD 가 먼저 깔리도록 강제.
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  source:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-rollouts
+    targetRevision: 2.40.10        # 최신 2.41.0 대신 안정 패치로 핀(신규 minor 회피)
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argo-rollouts
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # Rollouts CRD 가 커서 client-side apply 의 annotation(262144B) 한계에 걸림 → SSA 로 회피.
+      - ServerSideApply=true
