@@ -22,7 +22,9 @@ pipeline {
     HELM_CACHE_HOME  = '/tmp/helm-cache'
     HELM_DATA_HOME   = '/tmp/helm-data'
     HELM_CONFIG_HOME = '/tmp/helm-config'
-    TF_SKIP          = 'false'
+    // ⚠️ TF_SKIP은 environment{}에 두지 않는다 — 선언형 environment 블록은 매 스테이지 시작마다
+    //    다시 적용돼 런타임에 바꾼 값('true')을 'false'로 리셋함. → Check Changes에서 env.TF_SKIP을
+    //    직접 set하고, 이후 스테이지가 그 값을 끝까지 본다(리셋 안 됨).
   }
 
   stages {
@@ -76,6 +78,7 @@ pipeline {
             env.TF_SKIP = 'true'
             echo "Terraform(Desktop/VPC/) 변경 없음 (gitops/·docker/·policy/ 등) — Terraform 단계 전체 건너뜀"
           } else {
+            env.TF_SKIP = 'false'
             echo "Terraform 변경 감지(또는 판정불가) — plan/apply 진행"
           }
         }
