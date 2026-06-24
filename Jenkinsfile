@@ -37,31 +37,46 @@ pipeline {
       steps {
         script {
           // PR 빌드는 merge commit + shallow clone이라 HEAD~1 기준 diff가 틀어짐.
-          // → 머지 대상(CHANGE_TARGET) 기준으로 비교해 "이 PR이 순수하게 더한 변경"만 잡는다.
+          // → 머지 대상(CHANGE_TARGET)을 fetch해 FETCH_HEAD 기준으로 "이 PR이 더한 변경"만 잡는다.
+          //   (origin/<branch> ref 존재에 의존하지 않으려고 FETCH_HEAD 사용)
           // branch 빌드(직접 push)는 CHANGE_TARGET이 없어 직전 커밋 기준 fallback.
-          def base = env.CHANGE_TARGET ? "origin/${env.CHANGE_TARGET}" : ''
-          if (base) {
-            sh "git fetch --no-tags --depth=100 origin ${env.CHANGE_TARGET} >/dev/null 2>&1 || true"
-          }
+          // sh는 set +e·2>/dev/null·true로 항상 0 종료 → returnStdout 예외(빌드 ERROR) 방지.
+          def isPR = (env.CHANGE_TARGET != null && env.CHANGE_TARGET != '')
           def changed = sh(
             returnStdout: true,
-            script: base
-              ? "git diff --name-only ${base} HEAD"
-              : "git diff --name-only HEAD~1 HEAD 2>/dev/null || git show --name-only --format='' HEAD"
+            script: isPR
+              ? """
+                set +e
+                git fetch --no-tags --depth=100 origin ${env.CHANGE_TARGET} >/dev/null 2>&1
+                git diff --name-only FETCH_HEAD HEAD 2>/dev/null
+                true
+              """
+              : """
+                set +e
+                git diff --name-only HEAD~1 HEAD 2>/dev/null || git show --name-only --format='' HEAD 2>/dev/null
+                true
+              """
           ).trim()
 
           // 진단: 다음 빌드 로그에서 base·변경목록을 바로 확인(오작동 시 원인 추적용)
-          echo "Check Changes — base=${base ?: 'HEAD~1'} / 변경 파일:\n${changed}"
+          echo "Check Changes — base=${isPR ? "FETCH_HEAD(${env.CHANGE_TARGET})" : 'HEAD~1'} / 변경 파일:\n${changed ?: '(없음/판정불가)'}"
 
           // terraform 코드는 전부 Desktop/VPC/ 아래(environments·modules)에 있다.
           // 기존 'environments/'·'modules/'(루트) 매칭은 실제 경로와 안 맞아 무력 → Desktop/VPC/로 교정.
-          def tfChanged = changed.split('\n').any { f -> f.startsWith('Desktop/VPC/') }
+          def tfChanged
+          if (isPR && changed == '') {
+            // PR인데 변경목록을 못 구함(fetch 실패 등) → 안전하게 Terraform 실행(skip 안 함 = false-skip 방지)
+            tfChanged = true
+            echo "PR 변경목록 판정불가 — 안전상 Terraform 실행"
+          } else {
+            tfChanged = changed.split('\n').any { f -> f.startsWith('Desktop/VPC/') }
+          }
 
           if (!tfChanged) {
             env.TF_SKIP = 'true'
             echo "Terraform(Desktop/VPC/) 변경 없음 (gitops/·docker/·policy/ 등) — Terraform 단계 전체 건너뜀"
           } else {
-            echo "Terraform 변경 감지 — plan/apply 진행"
+            echo "Terraform 변경 감지(또는 판정불가) — plan/apply 진행"
           }
         }
       }
