@@ -7,8 +7,13 @@ metadata:
   namespace: {{ .Values.namespace }}
 spec:
   scaleTargetRef:
+    {{- if .Values.canary.enabled }}
+    apiVersion: argoproj.io/v1alpha1   # 카나리 시 워크로드가 Rollout → HPA 도 Rollout 을 가리켜야 함
+    kind: Rollout
+    {{- else }}
     apiVersion: apps/v1
     kind: Deployment
+    {{- end }}
     name: {{ .Values.app.name }}
   minReplicas: {{ .Values.hpa.minReplicas }}
   maxReplicas: {{ .Values.hpa.maxReplicas }}

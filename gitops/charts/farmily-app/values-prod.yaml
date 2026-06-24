@@ -71,3 +71,7 @@ keda:
 
 targetGroupArn: arn:aws:elasticloadbalancing:ap-northeast-2:851957594139:targetgroup/prod-eks-tg/49fea87ed8029421
 istioInjection: true
+
+# 카나리 활성 — 워크로드 Rollout 전환 + VS/DR + AnalysisTemplate + HPA 재배선
+canary:
+  enabled: true

@@ -1,0 +1,22 @@
+{{- if .Values.canary.enabled }}
+# Prometheus 에러율 게이트 — Istio 사이드카가 자동 수집하는 istio_requests_total 로 성공률 측정.
+# 카나리 step 의 analysis 가 이 템플릿을 호출 → 기준 미달 시 Rollout 자동 롤백(stable 복귀).
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate
+  namespace: {{ .Values.namespace }}
+spec:
+  metrics:
+    - name: success-rate
+      interval: {{ .Values.canary.analysis.interval }}     # 측정 주기
+      count: {{ .Values.canary.analysis.count }}           # 측정 횟수
+      successCondition: result[0] >= {{ .Values.canary.analysis.successRate }}
+      provider:
+        prometheus:
+          address: {{ .Values.canary.analysis.prometheusAddress }}
+          query: |
+            sum(rate(istio_requests_total{reporter="destination",destination_service_name="{{ .Values.app.name }}",response_code!~"5.*"}[2m]))
+            /
+            sum(rate(istio_requests_total{reporter="destination",destination_service_name="{{ .Values.app.name }}"}[2m]))
+{{- end }}

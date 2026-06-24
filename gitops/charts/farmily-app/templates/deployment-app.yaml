@@ -1,5 +1,7 @@
-apiVersion: apps/v1
-kind: Deployment
+# farmily-app 워크로드 — canary.enabled(prod)=Rollout / 아니면(dev)=Deployment.
+# 두 종류는 apiVersion·kind + 맨 끝 strategy 블록만 다르고 파드 spec(template)은 동일 → 한 파일로 관리.
+apiVersion: {{ if .Values.canary.enabled }}argoproj.io/v1alpha1{{ else }}apps/v1{{ end }}
+kind: {{ if .Values.canary.enabled }}Rollout{{ else }}Deployment{{ end }}
 metadata:
   name: {{ .Values.app.name }}
   namespace: {{ .Values.namespace }}
@@ -40,3 +42,30 @@ spec:
               port: {{ .Values.app.port }}
             initialDelaySeconds: 90
             periodSeconds: 15
+  {{- if .Values.canary.enabled }}
+  # ── 카나리 전략 (Rollout 전용) ──────────────────────────────
+  # Rollouts 컨트롤러가 아래 step 에 따라 farmily-app-vsvc 의 stable:canary weight 를 자동 조정.
+  strategy:
+    canary:
+      trafficRouting:
+        istio:
+          virtualService:
+            name: {{ .Values.app.name }}-vsvc
+            routes: [primary]
+          destinationRule:
+            name: {{ .Values.app.name }}-dr
+            canarySubsetName: canary
+            stableSubsetName: stable
+      steps:
+        - setWeight: 10            # 10% 카나리
+        - pause: { duration: 2m }  # 2분 관찰
+        - analysis:                # Prometheus 에러율 게이트(실패 시 자동 롤백)
+            templates:
+              - templateName: success-rate
+        - setWeight: 50            # 50% 확장
+        - pause: { duration: 2m }
+        - analysis:
+            templates:
+              - templateName: success-rate
+        # 통과 시 자동 100%
+  {{- end }}

@@ -63,3 +63,14 @@ keda:
 # ── ALB 연결(TargetGroupBinding) ────────────────────────
 targetGroupArn: ""   # apply 후 {env}-eks-tg ARN. values-{env} 에서 지정
 istioInjection: false
+
+# ── 카나리(Argo Rollouts, prod 전용) ────────────────────
+# enabled=true → 워크로드가 Rollout + VS/DR + AnalysisTemplate 렌더, HPA 가 Rollout 을 가리킴.
+# false(dev) → 기존 Deployment 그대로. (선결: argo-rollouts 컨트롤러 + Istio 사이드카)
+canary:
+  enabled: false
+  analysis:
+    prometheusAddress: http://kube-prometheus-stack-prometheus.monitoring:9090
+    successRate: "0.99"   # 성공률 99% 이상이어야 다음 step 진행
+    interval: 30s         # 측정 주기
+    count: 5              # 측정 횟수(총 2분30초)

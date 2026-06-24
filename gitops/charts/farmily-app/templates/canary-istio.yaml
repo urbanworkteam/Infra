@@ -1,0 +1,33 @@
+{{- if .Values.canary.enabled }}
+# Istio 트래픽 분리 — Argo Rollouts 가 VirtualService weight 를 step 에 따라 자동 수정(직접 안 건드림).
+# ⚠️ 이 VS 는 메시 내부(east-west) 트래픽만 분배. north-south(ALB→TGB→파드 직접)는 미적용 →
+#    실 트래픽 분배는 cut-over 때 istio-ingressgateway 경유(옵션 A)로. 현재는 메커니즘 구축(옵션 C).
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ .Values.app.name }}-dr
+  namespace: {{ .Values.namespace }}
+spec:
+  host: {{ .Values.app.name }}
+  subsets:
+    # subset 의 실제 식별 라벨(rollouts-pod-template-hash)은 Rollouts 가 런타임에 자동 주입.
+    - name: stable
+      labels: { app: {{ .Values.app.name }} }
+    - name: canary
+      labels: { app: {{ .Values.app.name }} }
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ .Values.app.name }}-vsvc
+  namespace: {{ .Values.namespace }}
+spec:
+  hosts: [ {{ .Values.app.name }} ]
+  http:
+    - name: primary
+      route:
+        - destination: { host: {{ .Values.app.name }}, subset: stable }
+          weight: 100        # Rollouts 가 step 에 따라 자동 조정
+        - destination: { host: {{ .Values.app.name }}, subset: canary }
+          weight: 0
+{{- end }}
