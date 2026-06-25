@@ -2,6 +2,8 @@
 #
 # 접속 경로: Client VPN → 10.2.0.0/22(VPN CIDR) → farmily-jenkins-sg → 8080/22
 # IAM 체인: EC2(인스턴스 프로파일) → farmily-jenkins-ec2-role → jenkins-tf-runner-{dev,prod}
+# ⚠️ B-lite(2026-06-25) 후: terraform assume-role은 prod-eks 파드의 IRSA(prod-eks-jenkins-tf-role)가 수행.
+#    이 EC2 인스턴스 프로파일 체인은 컨트롤러용으로만 잔존(빌드는 파드).
 #
 # 초기 비밀번호: sudo cat /var/lib/jenkins/secrets/initialAdminPassword
 
@@ -30,11 +32,13 @@ resource "aws_instance" "jenkins" {
 
   # IMDSv2 강제
   # http_tokens=required : v1(curl 169.254.169.254 직접 호출) 차단 → SSRF로 토큰 탈취 불가
-  # hop_limit=1          : 컨테이너(Jenkins Docker agent) 안에서 IMDS 접근 차단
+  # hop_limit=1          : host(네이티브 Jenkins systemd)만 IMDS 접근 — 컨테이너는 차단(하드닝).
+  #   한때 2였던 이유 = 옛 agent{docker} 빌드 컨테이너가 IMDS(assume-role) 필요했기 때문.
+  #   B-lite(2026-06-25)로 빌드가 prod-eks 파드로 이동 → EC2 빌드 컨테이너 소멸(실측 컨테이너 0) → 1로 환원.
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"
-    http_put_response_hop_limit = 2
+    http_put_response_hop_limit = 1
   }
 
   root_block_device {

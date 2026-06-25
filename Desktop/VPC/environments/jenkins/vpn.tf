@@ -9,8 +9,8 @@
 
 locals {
   dev_vpc_id         = "vpc-0bbc10947088b1d1c"
-  dev_private_subnet = "subnet-04bde333b9e019d43"   # dev-private-subnet-a (ap-northeast-2a)
-  vpn_cidr           = "10.2.0.0/22"                # dev VPC(10.0.0.0/16)와 겹치지 않는 클라이언트 IP 대역
+  dev_private_subnet = "subnet-04bde333b9e019d43" # dev-private-subnet-a (ap-northeast-2a)
+  vpn_cidr           = "10.2.0.0/22"              # dev VPC(10.0.0.0/16)와 겹치지 않는 클라이언트 IP 대역
 
   server_cert_arn = "arn:aws:acm:ap-northeast-2:851957594139:certificate/e285d384-b788-4a8a-b33d-d356b985e806"
   client_cert_arn = "arn:aws:acm:ap-northeast-2:851957594139:certificate/3643b889-ed8e-4a0f-b646-7da26504c728"
@@ -66,6 +66,16 @@ resource "aws_security_group" "jenkins" {
     cidr_blocks = ["10.0.10.0/24"]
   }
 
+  # ALB → Jenkins 8080. 인라인으로 통합(전엔 alb.tf의 별도 aws_security_group_rule.jenkins_from_alb).
+  # 인라인 ingress + 별도 rule 혼용은 같은 SG 충돌(provider) → plan마다 이 규칙 삭제 시도하던 것 해소.
+  ingress {
+    description     = "Jenkins UI from External ALB"
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+    security_groups = [aws_security_group.jenkins_alb.id]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -118,7 +128,7 @@ resource "aws_ec2_client_vpn_network_association" "farmily" {
 # ────────────────────────────────────────────────────────────────
 resource "aws_ec2_client_vpn_authorization_rule" "dev_vpc" {
   client_vpn_endpoint_id = aws_ec2_client_vpn_endpoint.farmily.id
-  target_network_cidr    = "10.0.0.0/16"   # dev VPC 전체
+  target_network_cidr    = "10.0.0.0/16" # dev VPC 전체
   authorize_all_groups   = true
 }
 

@@ -106,15 +106,9 @@ resource "aws_security_group" "jenkins_alb" {
   tags = { project = "farmily", team = "urbanwork", purpose = "jenkins-alb" }
 }
 
-resource "aws_security_group_rule" "jenkins_from_alb" {
-  type                     = "ingress"
-  description              = "Jenkins UI from External ALB"
-  from_port                = 8080
-  to_port                  = 8080
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.jenkins_alb.id
-  security_group_id        = aws_security_group.jenkins.id
-}
+# [2026-06-25] jenkins_from_alb(8080 from ALB)는 vpn.tf의 aws_security_group.jenkins 인라인 ingress로 통합.
+#   사유: 인라인 ingress + 별도 aws_security_group_rule 혼용 = 같은 SG 충돌(provider) → plan마다 ALB 규칙 삭제 시도.
+#   state 분리: terraform state rm aws_security_group_rule.jenkins_from_alb (실제 AWS 규칙은 인라인이 그대로 소유).
 
 # ────────────────────────────────────────────────────────────────
 # 3. External ALB
