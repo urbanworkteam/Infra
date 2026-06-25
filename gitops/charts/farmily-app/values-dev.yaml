@@ -1,5 +1,4 @@
 # dev 환경 차이만. (app 만, AI/HPA/KEDA 없음)
-# B-lite 카나리: gitops 검증 Job 트리거용 주석 (k8s 에이전트 전환 검증 후 제거)
 namespace: farmily-dev
 app:
   image:

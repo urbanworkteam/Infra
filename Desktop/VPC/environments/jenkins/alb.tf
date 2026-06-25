@@ -82,6 +82,16 @@ resource "aws_security_group" "jenkins_alb" {
     ipv6_cidr_blocks = ["2a0a:a440::/29", "2606:50c0::/32"]
   }
 
+  # prod-eks 빌드 에이전트(WebSocket) — prod NAT EIP 2개만 443 허용 (B-lite)
+  # 에이전트 파드(prod VPC) → prod NAT egress → 인터넷 → 이 ALB → 컨트롤러 8080(WS 업그레이드)
+  ingress {
+    description = "prod-eks Jenkins agents (WebSocket over 443)"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["3.39.94.155/32", "52.78.114.190/32"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -115,6 +125,9 @@ resource "aws_lb" "jenkins" {
   load_balancer_type = "application"
   security_groups    = [aws_security_group.jenkins_alb.id]
   subnets            = [local.dev_public_subnet_a, local.dev_public_subnet_c]
+
+  # WebSocket 에이전트 연결은 장수명 — 기본 60s면 조용한 구간에 끊길 수 있어 상향 (B-lite)
+  idle_timeout = 300
 
   tags = { project = "farmily", team = "urbanwork", purpose = "jenkins-webhook" }
 }
