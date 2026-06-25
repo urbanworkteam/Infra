@@ -38,9 +38,28 @@ def ghStatus(String state, String description) {
 
 pipeline {
   agent {
-    docker {
-      image '851957594139.dkr.ecr.ap-northeast-2.amazonaws.com/farmily-gitops-agent:1.0'
-      args '--entrypoint=""'   // 에이전트 기본 ENTRYPOINT 무시(Jenkins가 sh 주입)
+    kubernetes {
+      // B-lite: 빌드 에이전트를 prod-eks 파드로(컨트롤러는 EC2 유지). docker-on-EC2 exec(runc 버그) 제거.
+      // gitops 검증은 AWS 권한 0 → 기본 SA(IRSA 불요). 컨트롤러가 jenkins-agent 토큰으로 이 파드를 생성.
+      // command/args(sleep infinity)로 이미지 ENTRYPOINT 무시 — 기존 docker args '--entrypoint=""'와 동일 효과.
+      yaml '''
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: jenkins-build
+spec:
+  containers:
+  - name: gitops
+    image: 851957594139.dkr.ecr.ap-northeast-2.amazonaws.com/farmily-gitops-agent:1.0
+    command: ["sleep"]
+    args: ["infinity"]
+    tty: true
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+'''
+      defaultContainer 'gitops'
     }
   }
 
