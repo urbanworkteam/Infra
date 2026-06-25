@@ -40,9 +40,29 @@ def ghStatus(String state, String description) {
 
 pipeline {
   agent {
-    docker {
-      image '851957594139.dkr.ecr.ap-northeast-2.amazonaws.com/farmily-tf-agent:1.1'
-      label 'tf-ec2'
+    kubernetes {
+      // B-lite: terraform 빌드 에이전트를 prod-eks 파드로(컨트롤러는 EC2 유지). docker-on-EC2 exec(runc 버그) 제거.
+      // serviceAccountName=jenkins-agent → IRSA(prod-eks-jenkins-tf-role)가 파드 기본 자격.
+      //   이후 Assume Role 스테이지의 `aws sts assume-role`이 그 자격으로 jenkins-tf-runner-{env} 가정(체인 그대로).
+      yaml '''
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: jenkins-build
+spec:
+  serviceAccountName: jenkins-agent
+  containers:
+  - name: tf
+    image: 851957594139.dkr.ecr.ap-northeast-2.amazonaws.com/farmily-tf-agent:1.1
+    command: ["sleep"]
+    args: ["infinity"]
+    tty: true
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+'''
+      defaultContainer 'tf'
     }
   }
 
