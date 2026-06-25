@@ -5,7 +5,7 @@ app:
   # 불변 SHA 태그로 핀(롤백 추적). latest 금지. 새 배포 = prod-<sha> 갱신.
   image:
     repository: 851957594139.dkr.ecr.ap-northeast-2.amazonaws.com/farmily-api
-    tag: prod-ae0ed59
+    tag: prod-e5ff39a
   roleArn: arn:aws:iam::851957594139:role/prod-eks-app-role
   replicas: 2
   resources:
