@@ -35,6 +35,35 @@ spec:
                   capacity: 2500
                   maxSamplesPerSend: 1000
                   maxShards: 200
+                # === AMP 인입비 절감: 고카디널리티·미사용 메트릭을 AMP 송신 직전에 제거 ===
+                # writeRelabelConfigs는 remote_write 경로에서만 동작 → 로컬 TSDB(15d)와
+                # 인클러스터 알람(로컬 평가)엔 영향 없음. AMG(cross-region 조회)에서 해당 패널만 사라짐.
+                # 보존: apiserver_request_duration/sli_duration_bucket·apiserver_request_total (SLO 레코딩룰 입력)
+                # 예상: 활성 시계열 163K → ~91K (-44%), 인입비 ~$600→~$340/월
+                writeRelabelConfigs:
+                  # apiserver verbose 히스토그램 (latency/total 핵심 지표는 제외하고 나머지만 drop)
+                  - sourceLabels: [__name__]
+                    action: drop
+                    regex: 'apiserver_(request_body_size_bytes|response_sizes|watch_list_duration_seconds|watch_cache_read_wait_seconds|storage_list_duration_seconds|watch_events_sizes|admission_controller_admission_duration_seconds|admission_webhook_admission_duration_seconds|flowcontrol_request_execution_seconds|flowcontrol_priority_level_request_utilization|flowcontrol_request_wait_duration_seconds)_bucket'
+                  - sourceLabels: [__name__]
+                    action: drop
+                    regex: 'apiserver_request_body_size_bytes_(sum|count)'
+                  # etcd 클라이언트 히스토그램 (EKS 관리형 etcd → 대시보드 미사용)
+                  - sourceLabels: [__name__]
+                    action: drop
+                    regex: 'etcd_request_duration_seconds_bucket'
+                  # controller-runtime / workqueue / rest·client-go / storage / prober 내부 히스토그램
+                  - sourceLabels: [__name__]
+                    action: drop
+                    regex: '(controller_runtime_reconcile_time_seconds|workqueue_queue_duration_seconds|workqueue_work_duration_seconds|rest_client_request_duration_seconds|rest_client_request_size_bytes|rest_client_response_size_bytes|client_go_request_duration_seconds|storage_operation_duration_seconds|prober_probe_duration_seconds)_bucket'
+                  # kubelet / aws-sdk-go 내부 호출 히스토그램
+                  - sourceLabels: [__name__]
+                    action: drop
+                    regex: '(kubelet_runtime_operations_duration_seconds|kubelet_http_requests_duration_seconds|aws_sdk_go_request_duration_seconds|aws_sdk_go_request_attempt_duration_seconds|aws_sdk_go_request_retry_count)_bucket'
+                  # karpenter 인스턴스 카탈로그 (타입×AZ×capacity 폭발, AMG 거의 미조회)
+                  - sourceLabels: [__name__]
+                    action: drop
+                    regex: 'karpenter_cloudprovider_instance_type_offering_(available|price_estimate)'
         alertmanager:
           enabled: true
   destination:
